@@ -39,7 +39,7 @@ class Executor:
         }
         self.reranker = get_reranker_cls(config.executor.reranker)(config)
         self.openai_client = OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url)
-       def fetch_zotero_corpus(self) -> list[CorpusPaper]:
+    def fetch_zotero_corpus(self) -> list[CorpusPaper]:
         logger.info("Fetching zotero corpus")
         zot = zotero.Zotero(self.config.zotero.user_id, 'user', self.config.zotero.api_key)
         collections = zot.everything(zot.collections())
@@ -61,7 +61,7 @@ class Executor:
             added_date=datetime.strptime(c['data']['dateAdded'], '%Y-%m-%dT%H:%M:%SZ'),
             paths=c['paths']
         ) for c in corpus]
-       
+    
     def filter_corpus(self, corpus:list[CorpusPaper]) -> list[CorpusPaper]:
         if self.include_path_patterns:
             logger.info(f"Selecting zotero papers matching include_path: {self.include_path_patterns}")
