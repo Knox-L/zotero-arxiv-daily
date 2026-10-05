@@ -39,29 +39,67 @@ class Executor:
         }
         self.reranker = get_reranker_cls(config.executor.reranker)(config)
         self.openai_client = OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url)
-    def fetch_zotero_corpus(self) -> list[CorpusPaper]:
+   def fetch_zotero_corpus(self) -> list[CorpusPaper]:
         logger.info("Fetching zotero corpus")
-        zot = zotero.Zotero(self.config.zotero.user_id, 'user', self.config.zotero.api_key)
+
+        zot = zotero.Zotero(
+            self.config.zotero.user_id,
+            'user',
+            self.config.zotero.api_key
+        )
+
+        # Get all collections
         collections = zot.everything(zot.collections())
-        collections = {c['key']:c for c in collections}
-        corpus = zot.everything(zot.items(itemType='conferencePaper || journalArticle || preprint'))
-        corpus = [c for c in corpus if c['data']['abstractNote'] != '']
-        def get_collection_path(col_key:str) -> str:
+        collections = {c['key']: c for c in collections}
+
+        # Get all Zotero items first, then filter locally.
+        # This avoids relying on Zotero's itemType query syntax.
+        all_items = zot.everything(zot.items())
+
+        corpus = [
+            c for c in all_items
+            if c['data'].get('itemType') in [
+                'conferencePaper',
+                'journalArticle',
+                'preprint'
+            ]
+            and (c['data'].get('abstractNote') or '').strip() != ''
+        ]
+
+        def get_collection_path(col_key: str) -> str:
+            if col_key not in collections:
+                return collections.get(
+                    col_key,
+                    {'data': {'name': col_key, 'parentCollection': None}}
+                )['data']['name']
+
             if p := collections[col_key]['data']['parentCollection']:
                 return get_collection_path(p) + '/' + collections[col_key]['data']['name']
             else:
                 return collections[col_key]['data']['name']
+
         for c in corpus:
-            paths = [get_collection_path(col) for col in c['data']['collections']]
+            paths = [
+                get_collection_path(col)
+                for col in c['data'].get('collections', [])
+            ]
             c['paths'] = paths
+
         logger.info(f"Fetched {len(corpus)} zotero papers")
-        return [CorpusPaper(
-            title=c['data']['title'],
-            abstract=c['data']['abstractNote'],
-            added_date=datetime.strptime(c['data']['dateAdded'], '%Y-%m-%dT%H:%M:%SZ'),
-            paths=c['paths']
-        ) for c in corpus]
-    
+
+        return [
+            CorpusPaper(
+                title=c['data'].get('title', ''),
+                abstract=c['data'].get('abstractNote', ''),
+                added_date=datetime.strptime(
+                    c['data']['dateAdded'],
+                    '%Y-%m-%dT%H:%M:%SZ'
+                ),
+                paths=c['paths']
+            )
+            for c in corpus
+        ]
+       
     def filter_corpus(self, corpus:list[CorpusPaper]) -> list[CorpusPaper]:
         if self.include_path_patterns:
             logger.info(f"Selecting zotero papers matching include_path: {self.include_path_patterns}")
